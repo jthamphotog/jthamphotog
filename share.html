@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图片分享 - ImageShare</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+<header>
+  <div class="logo">ImageShare</div>
+  <a href="./">图片主页</a>
+</header>
+
+<main>
+  <section class="panel">
+    <h1>图片分享</h1>
+    <p id="status" role="status" aria-live="polite">
+      正在加载图片……
+    </p>
+
+    <img
+      id="preview"
+      class="preview"
+      alt="分享的图片"
+      hidden
+    >
+
+    <p id="fileName"></p>
+
+    <div class="button-row">
+      <a id="download" hidden>
+        <button type="button">下载原图</button>
+      </a>
+      <button id="copyLink" type="button">复制分享链接</button>
+    </div>
+  </section>
+</main>
+
+<footer>ImageShare · 图片分享空间</footer>
+
+<script>
+const cfg = window.APP_CONFIG;
+
+const supabaseClient = window.supabase.createClient(
+  cfg.SUPABASE_URL,
+  cfg.SUPABASE_KEY
+);
+
+const params = new URLSearchParams(location.search);
+const path = params.get("file");
+
+const status = document.getElementById("status");
+const preview = document.getElementById("preview");
+const download = document.getElementById("download");
+const fileName = document.getElementById("fileName");
+
+async function loadImage() {
+  if (!path || path.includes("/") || path.includes("\\") ||
+      path === "." || path === "..") {
+    status.textContent = "分享链接无效，请重新复制分享链接。";
+    return;
+  }
+
+  const { data } = supabaseClient.storage
+    .from(cfg.BUCKET)
+    .getPublicUrl(path);
+
+  const imageUrl = data.publicUrl;
+
+  fileName.textContent = "文件名称：" + path;
+
+  preview.onload = () => {
+    preview.hidden = false;
+    status.textContent = "图片加载成功！";
+  };
+
+  preview.onerror = () => {
+    status.textContent =
+      "图片加载失败。请检查图片是否存在，以及 Supabase bucket 是否为 Public。";
+    preview.hidden = true;
+    download.hidden = true;
+  };
+
+  preview.src = imageUrl;
+
+  download.href = imageUrl + "?download=" + encodeURIComponent(path);
+  download.download = path;
+  download.hidden = false;
+}
+
+document.getElementById("copyLink").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(location.href);
+    status.textContent = "分享链接已复制！";
+  } catch {
+    prompt("请复制分享链接：", location.href);
+  }
+});
+
+loadImage();
+</script>
+</body>
+</html>

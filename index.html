@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImageShare - 公共图片图库</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    .gallery-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 18px;
+    }
+
+    .photo-card {
+      min-width: 0;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: white;
+    }
+
+    .photo-thumb {
+      display: block;
+      width: 100%;
+      height: 190px;
+      padding: 0;
+      border: 0;
+      background: #f3f4f6;
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .2s ease;
+    }
+
+    .photo-thumb:hover img {
+      transform: scale(1.04);
+    }
+
+    .photo-info {
+      padding: 12px;
+    }
+
+    .photo-name {
+      margin: 0 0 12px;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+    }
+
+    .photo-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .photo-actions button,
+    .photo-actions a {
+      flex: 1;
+    }
+
+    .photo-actions button,
+    .photo-actions a button {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .photo-actions a {
+      text-decoration: none;
+    }
+
+    .admin-tools {
+      margin: 18px 0;
+    }
+
+    .admin-tools[hidden],
+    #loginPanel[hidden],
+    #logout[hidden],
+    #adminPanel[hidden],
+    #gallery[hidden],
+    #emptyState[hidden],
+    #viewer[hidden] {
+      display: none !important;
+    }
+
+    .viewer {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, .88);
+    }
+
+    .viewer-content {
+      max-width: 1000px;
+      width: 100%;
+      max-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .viewer img {
+      display: block;
+      max-width: 100%;
+      max-height: 75vh;
+      object-fit: contain;
+    }
+
+    .viewer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .viewer-title {
+      color: white;
+      overflow-wrap: anywhere;
+      text-align: center;
+    }
+
+    .viewer button,
+    .viewer a {
+      cursor: pointer;
+    }
+
+    #message {
+      overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 480px) {
+      .gallery {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .photo-thumb {
+        height: 145px;
+      }
+
+      .photo-info {
+        padding: 9px;
+      }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">ImageShare</div>
+  <button id="loginToggle" type="button">管理员登录</button>
+  <button id="logout" type="button" hidden>退出登录</button>
+</header>
+
+<main>
+
+
+  <section class="panel" id="loginPanel" hidden>
+    <h2>管理员登录</h2>
+    <form id="loginForm">
+      <label for="email">邮箱</label>
+      <input id="email" type="email" placeholder="管理员邮箱" required>
+
+      <label for="password">密码</label>
+      <input id="password" type="password" placeholder="管理员密码" required>
+
+      <button type="submit">登录</button>
+      <button id="cancelLogin" type="button">取消</button>
+    </form>
+  </section>
+
+  <section class="panel admin-tools" id="adminPanel" hidden>
+    <h2>管理员图片管理</h2>
+    <p>选择图片上传到公共图库。</p>
+    <form id="uploadForm">
+      <input id="files" type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        multiple required>
+      <button id="uploadBtn" type="submit">上传图片</button>
+    </form>
+  </section>
+
+  <div class="gallery-toolbar">
+    <h2>所有图片</h2>
+    <span id="imageCount">正在读取图片……</span>
+  </div>
+
+  <p id="message" role="status" aria-live="polite"></p>
+  <p id="emptyState" hidden>图库目前还没有图片。</p>
+  <section id="gallery" class="gallery" aria-label="公共图片图库"></section>
+</main>
+
+<div id="viewer" class="viewer" hidden role="dialog"
+     aria-modal="true" aria-label="图片预览">
+  <div class="viewer-content">
+    <img id="viewerImage" alt="图片大图预览">
+    <p id="viewerTitle" class="viewer-title"></p>
+    <div class="viewer-actions">
+      <a id="viewerDownload" href="#" download>
+        <button type="button">下载原图</button>
+      </a>
+      <button id="viewerCopy" type="button">复制分享链接</button>
+      <button id="viewerClose" type="button">关闭预览</button>
+    </div>
+  </div>
+</div>
+
+<footer>ImageShare · 公共图片分享空间</footer>
+
+<script>
+const cfg = window.APP_CONFIG;
+
+const supabaseClient = window.supabase.createClient(
+  cfg.SUPABASE_URL,
+  cfg.SUPABASE_KEY
+);
+
+const $ = id => document.getElementById(id);
+
+let currentImages = [];
+let currentViewerPath = null;
+let isAdmin = false;
+
+function message(text) {
+  $("message").textContent = text;
+}
+
+function shareUrl(path) {
+  const url = new URL("share.html", location.href);
+  url.searchParams.set("file", path);
+  return url.href;
+}
+
+function makeImagePath(file) {
+  const ext = file.name.match(/\.(jpe?g|png|webp|gif)$/i);
+  return crypto.randomUUID() + (ext ? ext[0].toLowerCase() : "");
+}
+
+function getPublicUrl(path) {
+  return supabaseClient.storage.from(cfg.BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+function isImageFile(file) {
+  return /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+}
+
+function openViewer(path, name, url) {
+  currentViewerPath = path;
+  $("viewerImage").src = url;
+  $("viewerImage").alt = name;
+  $("viewerTitle").textContent = name;
+  $("viewerDownload").href = url + "?download=" + encodeURIComponent(name);
+  $("viewerDownload").download = name;
+  $("viewer").hidden = false;
+  $("viewerClose").focus();
+}
+
+function closeViewer() {
+  $("viewer").hidden = true;
+  $("viewerImage").removeAttribute("src");
+  currentViewerPath = null;
+}
+
+$("viewerClose").addEventListener("click", closeViewer);
+
+$("viewer").addEventListener("click", event => {
+  if (event.target === $("viewer")) closeViewer();
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeViewer();
+});
+
+$("viewerCopy").addEventListener("click", async () => {
+  if (!currentViewerPath) return;
+  const url = shareUrl(currentViewerPath);
+  try {
+    await navigator.clipboard.writeText(url);
+    message("分享链接已复制！");
+  } catch {
+    prompt("请复制分享链接：", url);
+  }
+});
+
+function createImageCard(file) {
+  const path = file.name;
+  const publicUrl = getPublicUrl(path);
+
+  const card = document.createElement("article");
+  card.className = "photo-card";
+
+  const thumb = document.createElement("button");
+  thumb.type = "button";
+  thumb.className = "photo-thumb";
+  thumb.setAttribute("aria-label", "查看图片：" + path);
+
+  const img = document.createElement("img");
+  img.src = publicUrl;
+  img.alt = path;
+  img.loading = "lazy";
+  img.onerror = () => {
+    card.remove();
+    $("imageCount").textContent =
+      $("gallery").querySelectorAll(".photo-card").length + " 张图片";
+  };
+  thumb.append(img);
+  thumb.addEventListener("click", () => openViewer(path, path, publicUrl));
+
+  const info = document.createElement("div");
+  info.className = "photo-info";
+
+  const name = document.createElement("p");
+  name.className = "photo-name";
+  name.textContent = path;
+
+  const actions = document.createElement("div");
+  actions.className = "photo-actions";
+
+  const downloadLink = document.createElement("a");
+  downloadLink.href = publicUrl + "?download=" + encodeURIComponent(path);
+  downloadLink.download = path;
+  downloadLink.textContent = "下载";
+  downloadLink.setAttribute("aria-label", "下载 " + path);
+
+  const downloadButton = document.createElement("button");
+  downloadButton.type = "button";
+  downloadButton.textContent = "下载";
+  downloadLink.replaceChildren(downloadButton);
+
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.textContent = "分享";
+  copyButton.addEventListener("click", async () => {
+    const url = shareUrl(path);
+    try {
+      await navigator.clipboard.writeText(url);
+      message("分享链接已复制！");
+    } catch {
+      prompt("请复制分享链接：", url);
+    }
+  });
+
+  actions.append(downloadLink, copyButton);
+
+  if (isAdmin) {
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "删除";
+    deleteButton.className = "danger";
+
+    deleteButton.addEventListener("click", async () => {
+      if (!confirm("确定删除这张图片吗？")) return;
+
+      const { data } = await supabaseClient.auth.getUser();
+      if (!data.user || data.user.id !== cfg.ADMIN_UID) {
+        message("管理员身份验证失败，请重新登录。");
+        await updatePage();
+        return;
+      }
+
+      const { error } = await supabaseClient.storage
+        .from(cfg.BUCKET)
+        .remove([path]);
+
+      if (error) {
+        message("删除失败：" + error.message);
+        return;
+      }
+
+      message("图片已删除。");
+      await refreshGallery();
+    });
+
+    actions.append(deleteButton);
+  }
+
+  info.append(name, actions);
+  card.append(thumb, info);
+  return card;
+}
+
+async function refreshGallery() {
+  $("gallery").replaceChildren();
+  $("emptyState").hidden = true;
+  $("imageCount").textContent = "正在读取图片……";
+
+  const { data, error } = await supabaseClient.storage
+    .from(cfg.BUCKET)
+    .list("", {
+      limit: 100,
+      sortBy: { column: "created_at", order: "desc" }
+    });
+
+  if (error) {
+    $("imageCount").textContent = "";
+    message("读取图片失败：" + error.message);
+    return;
+  }
+
+  currentImages = (data || []).filter(file =>
+    file.name && !file.name.startsWith(".") && isImageFile(file)
+  );
+
+  for (const file of currentImages) {
+    $("gallery").append(createImageCard(file));
+  }
+
+  const count = $("gallery").querySelectorAll(".photo-card").length;
+  $("imageCount").textContent = count + " 张图片";
+
+  if (count === 0) {
+    $("emptyState").hidden = false;
+  }
+}
+
+async function updatePage() {
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    message("无法读取登录状态：" + error.message);
+    isAdmin = false;
+    await refreshGallery();
+    return;
+  }
+
+  const user = data.session?.user;
+  isAdmin = !!user && user.id === cfg.ADMIN_UID;
+
+  $("adminPanel").hidden = !isAdmin;
+  $("logout").hidden = !isAdmin;
+  $("loginToggle").hidden = isAdmin;
+
+  if (!isAdmin) {
+    $("loginPanel").hidden = true;
+  }
+
+  await refreshGallery();
+}
+
+$("loginToggle").addEventListener("click", () => {
+  $("loginPanel").hidden = !$("loginPanel").hidden;
+  if (!$("loginPanel").hidden) $("email").focus();
+});
+
+$("cancelLogin").addEventListener("click", () => {
+  $("loginPanel").hidden = true;
+});
+
+$("loginForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  message("正在登录……");
+
+  const { error } = await supabaseClient.auth.signInWithPassword({
+    email: $("email").value.trim(),
+    password: $("password").value
+  });
+
+  if (error) {
+    message("登录失败：" + error.message);
+    return;
+  }
+
+  const { data } = await supabaseClient.auth.getUser();
+
+  if (!data.user || data.user.id !== cfg.ADMIN_UID) {
+    await supabaseClient.auth.signOut();
+    isAdmin = false;
+    await updatePage();
+    message("这个账号没有管理员权限。");
+    return;
+  }
+
+  $("loginPanel").hidden = true;
+  message("管理员登录成功！");
+  await updatePage();
+});
+
+$("logout").addEventListener("click", async () => {
+  await supabaseClient.auth.signOut();
+  isAdmin = false;
+  message("已退出管理员账号。");
+  await updatePage();
+});
+
+$("uploadForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const { data } = await supabaseClient.auth.getUser();
+  if (!data.user || data.user.id !== cfg.ADMIN_UID) {
+    message("请先使用管理员账号登录。");
+    return;
+  }
+
+  const files = Array.from($("files").files);
+  if (!files.length) {
+    message("请先选择图片。");
+    return;
+  }
+
+  $("uploadBtn").disabled = true;
+
+  try {
+    let uploaded = 0;
+
+    for (const file of files) {
+      if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+        throw new Error("不支持的图片格式：" + file.name);
+      }
+
+      const path = makeImagePath(file);
+      const { error } = await supabaseClient.storage
+        .from(cfg.BUCKET)
+        .upload(path, file, {
+          contentType: file.type,
+          upsert: false
+        });
+
+      if (error) throw error;
+
+      uploaded++;
+      message("上传进度：" + uploaded + "/" + files.length);
+    }
+
+    $("files").value = "";
+    message("上传完成！共上传 " + uploaded + " 张图片。");
+    await refreshGallery();
+  } catch (error) {
+    message("上传失败：" + error.message);
+  } finally {
+    $("uploadBtn").disabled = false;
+  }
+});
+
+updatePage();
+</script>
+</body>
+</html>
