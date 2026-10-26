@@ -387,10 +387,8 @@ function createImageCard(file) {
     deleteButton.textContent = "删除";
     deleteButton.className = "danger";
 
-    deleteButton.addEventListener("click", async () => {
-      if (!confirm("确定删除这张图片吗？")) return;
-
-      const { data } = await supabaseClient.auth.getUser();
+deleteButton.addEventListener("click", async () => {
+  const { data } = await supabaseClient.auth.getUser();
       if (!data.user || data.user.id !== cfg.ADMIN_UID) {
         message("管理员身份验证失败，请重新登录。");
         await updatePage();
@@ -426,7 +424,7 @@ async function refreshGallery() {
   const { data, error } = await supabaseClient.storage
     .from(cfg.BUCKET)
     .list("", {
-      limit: 100,
+      limit: 1000,
       sortBy: { column: "created_at", order: "desc" }
     });
 
